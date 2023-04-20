@@ -6,8 +6,8 @@ from pathlib import Path
 import datetime
 import openai
 import re
-from tiktoken import get_encoding
-from tiktoken import encoding_for_model
+# from tiktoken import get_encoding
+# from tiktoken import encoding_for_model
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -64,8 +64,8 @@ class ResultsManager:
     def save_summary(self, summary):
         self.workspace.save_file("summary.md", summary, subdir="outputs")
 
-class PowerShellExecutor:
-    def __init__(self, prompt, results_manager, workspace):
+class ShellExecutor:
+    def __init__(self, prompt, results_manager, workspace, shell):
         self.openai_organization = "org-SK9LjCRvUYn33UGLHqAkFEQe"
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.prompt = prompt
@@ -77,7 +77,8 @@ class PowerShellExecutor:
         self.outputs = []
         self.results_manager = results_manager
         self.workspace = workspace
-        encoding_for_model("gpt-3.5-turbo")
+        self.shell = shell
+        #encoding_for_model("gpt-3.5-turbo")
 
     def add_message(self, role, content):
         MAX_MESSAGE_LENGTH = 4000
@@ -106,7 +107,7 @@ class PowerShellExecutor:
         # try to extract json from the response
         try:
             json_obj = json.loads(response)
-            return json_obj["command"]
+            return [json_obj["command"]]
         except json.JSONDecodeError:
             # Search for JSON objects containing the "command" key
             json_matches = re.findall(r'\{[^}]*"command"[^}]*\}', response)
@@ -129,7 +130,14 @@ class PowerShellExecutor:
 
     def execute_command(self, command):
         try:
-            output = subprocess.run(["powershell", "-Command", command], capture_output=True, text=True, timeout=60)
+            if self.shell == "powershell":
+                command = ["powershell", "-Command", command]
+            elif self.shell == "bash":
+                command = ["bash", "-c", command]
+            else:
+                raise ValueError(f"Invalid shell specified: {self.shell}")
+
+            output = subprocess.run(command, capture_output=True, text=True, timeout=60)
             return output
         except subprocess.TimeoutExpired:
             logger.info(f"Command timed out. Skipping.")
@@ -207,14 +215,11 @@ if __name__ == "__main__":
     workspace_directory = str(workspace.run_directory.resolve())
 
     prompt = f"""
-    Create a fun website with html, css, and javascript that creatively says hi to Caffrey.
-    Add content to each file. The website should be responsive and have a button that says "Say hi to Caffrey" and when clicked, it should say hi to Caffrey.
-    Finally, open chrome and navigate to the page. 
-    Make sure to run chrome in the background.
-    Use PowerShell Cmdlets. Your workspace directory is '{workspace_directory}'. If you want to create files, do so in this directory using absolute paths.
+    Get the current working directory and list the files in it. Get the network interfaces. Get the current user. Get the current date. Get the current time. Get the current time zone. Get the current time zone offset. Get the current time zone name. Get the current time zone abbreviation. Get the current time zone DST offset. Get the current time zone DST start. Get the current time zone DST end. Get the current time zone DST abbreviation. Get the current time zone DST name
+    Use bash linux commands. Your workspace directory is '{workspace_directory}'. If you want to create files, do so in this directory using absolute paths.
     """
 
-    executor = PowerShellExecutor(prompt, results_manager, workspace)
+    executor = ShellExecutor(prompt, results_manager, workspace, shell="bash")
 
     logger.info(f"Prompt: {prompt.strip()}")
 
